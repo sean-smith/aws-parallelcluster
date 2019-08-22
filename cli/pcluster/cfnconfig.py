@@ -78,10 +78,6 @@ class ParallelClusterConfig(object):
         # Initialize parameters related to the cluster configuration
         self.__init_cluster_parameters()
 
-        # Verify Account limits
-        if self.__sanity_check:
-            self.__check_account_capacity()
-
         # Initialize ExtraJson parameter
         self.__init_extra_json_parameter()
 
@@ -108,6 +104,10 @@ class ParallelClusterConfig(object):
 
         # efa checks
         self.__init_efa_parameters()
+
+        # Verify Account limits
+        if self.__sanity_check:
+            self.__check_account_capacity()
 
         # Handle extra parameters supplied on command-line
         try:
@@ -376,15 +376,19 @@ class ParallelClusterConfig(object):
 
             test_ami_id = self.__get_latest_alinux_ami_id()
 
+            network_interface = [{"DeviceIndex": 0, "SubnetId": subnet_id}]
+            if self.parameters.get("EFA") == "compute":
+                network_interface[0]["InterfaceType"] = "efa"
+
             ec2.run_instances(
                 InstanceType=instance_type,
                 MinCount=max_size,
                 MaxCount=max_size,
                 ImageId=test_ami_id,
-                SubnetId=subnet_id,
                 Placement={"GroupName": self.parameters.get("PlacementGroup")}
                 if self.parameters.get("PlacementGroup") not in [None, "NONE", "DYNAMIC"]
                 else {},
+                NetworkInterfaces=network_interface,
                 DryRun=True,
             )
         except ClientError as e:
@@ -537,7 +541,6 @@ class ParallelClusterConfig(object):
             supported_features = get_supported_features(self.region, "efa")
             valid_instances = supported_features.get("instances")
 
-            self.__validate_instance("EFA", self.parameters.get("ComputeInstanceType"), valid_instances)
             self.__validate_os("EFA", self.__get_os(), ["alinux", "centos7", "ubuntu1604"])
             self.__validate_scheduler("EFA", self.__get_scheduler(), ["sge", "slurm", "torque"])
             self.__validate_resource("EFA", self.parameters)
